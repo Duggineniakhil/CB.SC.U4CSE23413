@@ -97,13 +97,18 @@ app.get('/api/priority-inbox', async (req, res) => {
   }
 });
 
-// Original Notification API from stage 1
+// Original Notification API from stage 1 updated with query params
 app.get('/api/notifications', async (req, res) => {
   try {
     await Log("backend", "info", "controller", "Fetching all notifications");
     
     const token = await getAuthToken();
-    const response = await fetch(`${CONFIG.baseUrl}/notifications`, {
+    const queryParams = new URLSearchParams(req.query).toString();
+    const url = queryParams 
+      ? `${CONFIG.baseUrl}/notifications?${queryParams}` 
+      : `${CONFIG.baseUrl}/notifications`;
+
+    const response = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
 

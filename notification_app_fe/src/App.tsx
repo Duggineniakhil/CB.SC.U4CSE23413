@@ -1,117 +1,206 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Container, Typography, Box, Button, TextField, 
-  Paper, List, ListItem, ListItemText, Divider, 
-  Alert, CircularProgress, AppBar, Toolbar 
+  Container, Typography, Box, Paper, List, ListItem, 
+  Divider, Alert, CircularProgress, AppBar, Toolbar,
+  Tabs, Tab, Select, MenuItem, InputLabel, FormControl,
+  Chip, Grid, Button, IconButton, useMediaQuery, useTheme, Card, CardContent
 } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CircleIcon from '@mui/icons-material/Circle';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import { Log } from './utils/logger';
 
 interface Notification {
-  id: number;
-  message: string;
-  type: string;
+  ID: string;
+  Message: string;
+  Type: string;
+  Timestamp: string;
 }
 
 function App() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  const [tab, setTab] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [priorityNotifications, setPriorityNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newMessage, setNewMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string>('All');
+  const [viewedIds, setViewedIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('viewed_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
 
-  const fetchNotifications = async () => {
-    setLoading(true);
+  const fetchAllNotifications = async () => {
     try {
-      await Log("frontend", "info", "api", "Fetching notifications from backend");
-      const res = await fetch('http://localhost:5000/api/notifications');
-      if (!res.ok) throw new Error("Failed to fetch");
+      await Log("frontend", "info", "api", "Fetching all notifications");
+      const url = filterType !== 'All' 
+        ? `http://localhost:5000/api/notifications?notification_type=${filterType}`
+        : `http://localhost:5000/api/notifications`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch all");
       const data = await res.json();
       setNotifications(data);
-      await Log("frontend", "info", "state", "Notifications loaded successfully");
     } catch (err: any) {
       setError(err.message);
-      await Log("frontend", "error", "api", `Fetch failed: ${err.message}`);
-    } finally {
-      setLoading(false);
+      await Log("frontend", "error", "api", `Fetch all failed: ${err.message}`);
     }
   };
 
-  const addNotification = async () => {
-    if (!newMessage) {
-      await Log("frontend", "warn", "component", "User tried to send empty message");
-      return;
-    }
+  const fetchPriorityNotifications = async () => {
     try {
-      await Log("frontend", "info", "api", "Sending new notification to backend");
-      const res = await fetch('http://localhost:5000/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newMessage, type: 'info' })
-      });
-      if (!res.ok) throw new Error("Post failed");
-      setNewMessage("");
-      fetchNotifications();
-      await Log("frontend", "info", "component", "Notification sent successfully");
+      await Log("frontend", "info", "api", "Fetching priority notifications");
+      const res = await fetch('http://localhost:5000/api/priority-inbox');
+      if (!res.ok) throw new Error("Failed to fetch priority");
+      const data = await res.json();
+      setPriorityNotifications(data.notifications || []);
     } catch (err: any) {
       setError(err.message);
-      await Log("frontend", "error", "api", `Post failed: ${err.message}`);
+      await Log("frontend", "error", "api", `Fetch priority failed: ${err.message}`);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
-  }, []);
+    setLoading(true);
+    Promise.all([fetchAllNotifications(), fetchPriorityNotifications()]).finally(() => {
+      setLoading(false);
+      Log("frontend", "info", "component", "Data load complete");
+    });
+  }, [filterType]);
+
+  const markAsViewed = async (id: string) => {
+    if (!viewedIds.includes(id)) {
+      const updated = [...viewedIds, id];
+      setViewedIds(updated);
+      localStorage.setItem('viewed_notifications', JSON.stringify(updated));
+      await Log("frontend", "info", "state", `Marked notification ${id} as viewed`);
+    }
+  };
+
+  const markAllAsViewed = async () => {
+    const allIds = (tab === 0 ? priorityNotifications : notifications).map(n => n.ID);
+    const newIds = Array.from(new Set([...viewedIds, ...allIds]));
+    setViewedIds(newIds);
+    localStorage.setItem('viewed_notifications', JSON.stringify(newIds));
+    await Log("frontend", "info", "state", "Marked all as viewed");
+  };
+
+  const getChipColor = (type: string) => {
+    switch (type) {
+      case 'Placement': return 'success';
+      case 'Result': return 'primary';
+      case 'Event': return 'secondary';
+      default: return 'default';
+    }
+  };
+
+  const renderNotificationList = (list: Notification[]) => {
+    if (list.length === 0) return <Typography sx={{p:3}} color="textSecondary">No notifications found.</Typography>;
+    
+    return (
+      <Grid container spacing={2} sx={{ p: 2 }}>
+        {list.map((n) => {
+          const isViewed = viewedIds.includes(n.ID);
+          return (
+            <Grid item xs={12} key={n.ID}>
+              <Card 
+                variant="outlined" 
+                sx={{ 
+                  bgcolor: isViewed ? 'background.paper' : '#e3f2fd',
+                  transition: '0.3s',
+                  '&:hover': { boxShadow: 3 }
+                }}
+              >
+                <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: "16px !important" }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, flex: 1 }}>
+                    <Box sx={{ mt: 0.5 }}>
+                      {isViewed ? <CheckCircleIcon color="disabled" /> : <CircleIcon color="primary" fontSize="small" />}
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
+                        <Chip label={n.Type} size="small" color={getChipColor(n.Type) as any} />
+                        <Typography variant="caption" color="textSecondary">
+                          {new Date(n.Timestamp).toLocaleString()}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body1" sx={{ fontWeight: isViewed ? 'normal' : 'bold' }}>
+                        {n.Message}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  {!isViewed && (
+                    <Button size="small" onClick={() => markAsViewed(n.ID)}>
+                      Mark Read
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+    );
+  };
 
   return (
-    <Box sx={{ flexGrow: 1, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
-      <AppBar position="static" sx={{ bgcolor: '#1a237e' }}>
+    <Box sx={{ flexGrow: 1, bgcolor: '#f5f5f5', minHeight: '100vh', pb: 4 }}>
+      <AppBar position="sticky" sx={{ bgcolor: '#1a237e' }}>
         <Toolbar>
-          <Typography variant="h6" component="div">
-            Notification System
+          <NotificationsActiveIcon sx={{ mr: 2 }} />
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Campus Hub
           </Typography>
         </Toolbar>
       </AppBar>
       
       <Container maxWidth="md" sx={{ mt: 4 }}>
-        <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
-          <Typography variant="h4" gutterBottom color="primary">
-            Send Notification
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
-            <TextField 
-              fullWidth 
-              label="Enter notification message" 
-              variant="outlined"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-            />
-            <Button 
-              variant="contained" 
-              onClick={addNotification}
-              sx={{ px: 4 }}
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        
+        <Paper elevation={3} sx={{ borderRadius: 2, overflow: 'hidden' }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
+            <Tabs 
+              value={tab} 
+              onChange={(e, v) => setTab(v)} 
+              variant={isMobile ? "fullWidth" : "standard"}
+              centered={!isMobile}
             >
-              Send
-            </Button>
+              <Tab label="Priority Inbox" />
+              <Tab label="All Notifications" />
+            </Tabs>
           </Box>
 
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          <Box sx={{ p: 2, bgcolor: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+            {tab === 1 && (
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>Filter</InputLabel>
+                <Select
+                  value={filterType}
+                  label="Filter"
+                  onChange={(e) => setFilterType(e.target.value)}
+                >
+                  <MenuItem value="All">All Types</MenuItem>
+                  <MenuItem value="Placement">Placements</MenuItem>
+                  <MenuItem value="Result">Results</MenuItem>
+                  <MenuItem value="Event">Events</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            <Box sx={{ flexGrow: 1 }} />
+            <Button variant="outlined" size="small" onClick={markAllAsViewed}>
+              Mark all as read
+            </Button>
+          </Box>
+          <Divider />
 
-          <Typography variant="h5" gutterBottom>
-            Recent Notifications
-          </Typography>
           {loading ? (
-            <CircularProgress />
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
           ) : (
-            <List>
-              {notifications.map((n) => (
-                <React.Fragment key={n.id}>
-                  <ListItem>
-                    <ListItemText primary={n.message} secondary={n.type} />
-                  </ListItem>
-                  <Divider />
-                </React.Fragment>
-              ))}
-              {notifications.length === 0 && <Typography color="textSecondary">No notifications found.</Typography>}
-            </List>
+            <Box sx={{ bgcolor: '#f8f9fa', minHeight: 400 }}>
+              {tab === 0 ? renderNotificationList(priorityNotifications) : renderNotificationList(notifications)}
+            </Box>
           )}
         </Paper>
       </Container>
