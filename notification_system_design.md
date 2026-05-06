@@ -97,7 +97,7 @@ WHERE type = 'Placement' AND createdAt >= NOW() - INTERVAL '7 days';
 2. **Partial Failure:** If `send_email(student_id)` fails midway (e.g., at student 25,000), the loop crashes. The remaining 25,000 students get nothing, and retrying is hard without duplicating emails.
 
 **How to redesign reliably:**
-Use an asynchronous Task Queue / Message Broker (like RabbitMQ, Kafka, or AWS SQS). The HTTP request just publishes an event ("Send Notification to All"), and worker services process it in the background.
+Use an asynchronous Task Queue / Message Broker (like Kafka). The HTTP request just publishes an event ("Send Notification to All"), and worker services process it in the background.
 
 **Should DB save and email happen together?**
 No, saving to the DB should happen first to ensure durability. Then, an event should be dispatched to send the email. If the email service goes down, the database record still exists, and the email can be retried later.
@@ -120,3 +120,10 @@ function process_task(task):
     except Error:
         retry_task(task)
 ```
+
+## Stage 6
+### Priority Inbox
+The priority inbox logic has been implemented in the `notification_app_be` Node.js application. 
+It retrieves notifications from the evaluation service, assigns weights to each type (`Placement: 3, Result: 2, Event: 1`), and sorts them by priority descending and timestamp descending, returning the top 10 results.
+
+Code implementation can be found in `notification_app_be/index.js` under the `/api/priority-inbox` endpoint. All events are logged using the custom `logging_middleware`.
