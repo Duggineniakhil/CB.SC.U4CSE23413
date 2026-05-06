@@ -55,7 +55,9 @@ const PRIORITY_WEIGHTS = {
   "Event": 1
 };
 
-app.get('/api/priority-inbox', async (req, res) => {
+const VALID_TYPES = ["Placement", "Result", "Event"];
+
+app.get('/api/v1/notifications/priority', async (req, res) => {
   try {
     await Log("backend", "info", "controller", "Fetching priority inbox notifications");
     
@@ -89,18 +91,28 @@ app.get('/api/priority-inbox', async (req, res) => {
     const top10 = notifications.slice(0, 10);
     
     await Log("backend", "info", "service", `Successfully processed priority inbox. Returned ${top10.length} items.`);
-    res.json({ notifications: top10 });
+    res.json({ success: true, data: top10 });
 
   } catch (error) {
     await Log("backend", "error", "handler", `Priority Inbox Error: ${error.message}`);
-    res.status(500).json({ error: "Failed to process priority inbox" });
+    res.status(500).json({ success: false, error: "Failed to process priority inbox" });
   }
 });
 
-// Original Notification API from stage 1 updated with query params
-app.get('/api/notifications', async (req, res) => {
+// Original Notification API updated with query params, validation, and pagination
+app.get('/api/v1/notifications', async (req, res) => {
   try {
-    await Log("backend", "info", "controller", "Fetching all notifications");
+    const { notification_type, page = 1, limit = 50 } = req.query;
+
+    if (notification_type && !VALID_TYPES.includes(notification_type)) {
+      await Log("backend", "warn", "controller", `Invalid notification type requested: ${notification_type}`);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid notification type"
+      });
+    }
+
+    await Log("backend", "info", "controller", `Fetching all notifications (page: ${page}, limit: ${limit})`);
     
     const token = await getAuthToken();
     const queryParams = new URLSearchParams(req.query).toString();
@@ -112,15 +124,30 @@ app.get('/api/notifications', async (req, res) => {
       headers: { 'Authorization': `Bearer ${token}` }
     });
 
+    if (response.status === 401) {
+      await Log("backend", "error", "auth", "Unauthorized access to notifications");
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
     if (!response.ok) {
       throw new Error("Failed to fetch from test server");
     }
 
     const data = await response.json();
-    res.json(data.notifications || []);
+    let notifications = data.notifications || [];
+
+    // Optional: local pagination if the evaluation server doesn't apply it
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    if (!isNaN(pageNum) && !isNaN(limitNum)) {
+       const startIndex = (pageNum - 1) * limitNum;
+       notifications = notifications.slice(startIndex, startIndex + limitNum);
+    }
+
+    res.json({ success: true, page: pageNum, limit: limitNum, data: notifications });
   } catch (error) {
     await Log("backend", "error", "handler", `Error fetching notifications: ${error.message}`);
-    res.status(500).json({ error: "Failed to fetch notifications" });
+    res.status(500).json({ success: false, error: "Failed to fetch notifications" });
   }
 });
 

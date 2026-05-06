@@ -36,12 +36,12 @@ function App() {
     try {
       await Log("frontend", "info", "api", "Fetching all notifications");
       const url = filterType !== 'All' 
-        ? `http://localhost:5000/api/notifications?notification_type=${filterType}`
-        : `http://localhost:5000/api/notifications`;
+        ? `http://localhost:5000/api/v1/notifications?notification_type=${filterType}`
+        : `http://localhost:5000/api/v1/notifications`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch all");
-      const data = await res.json();
-      setNotifications(data);
+      const json = await res.json();
+      setNotifications(json.data || []);
     } catch (err: any) {
       setError(err.message);
       await Log("frontend", "error", "api", `Fetch all failed: ${err.message}`);
@@ -51,10 +51,10 @@ function App() {
   const fetchPriorityNotifications = async () => {
     try {
       await Log("frontend", "info", "api", "Fetching priority notifications");
-      const res = await fetch('http://localhost:5000/api/priority-inbox');
+      const res = await fetch('http://localhost:5000/api/v1/notifications/priority');
       if (!res.ok) throw new Error("Failed to fetch priority");
-      const data = await res.json();
-      setPriorityNotifications(data.notifications || []);
+      const json = await res.json();
+      setPriorityNotifications(json.data || []);
     } catch (err: any) {
       setError(err.message);
       await Log("frontend", "error", "api", `Fetch priority failed: ${err.message}`);
