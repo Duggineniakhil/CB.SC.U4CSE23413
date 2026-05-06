@@ -39,7 +39,7 @@ export async function Log(stack: "frontend" | "backend", level: string, pkg: str
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`
       },
-      body: JSON.stringify({ stack, level, package: pkg, message })
+      body: JSON.stringify({ stack, level, package: pkg, message: message.length > 48 ? message.substring(0, 45) + '...' : message })
     });
   } catch (error) {
     console.error("Logging failed:", error);
